@@ -134,6 +134,72 @@ const SubagentParams = Type.Object({
 
 type SubagentSessionMode = "standalone" | "lineage-only" | "fork";
 
+/** Overrides for model/thinking of built-in subagents from settings.json. */
+interface AgentOverride {
+  model?: string;
+  thinking?: string;
+}
+
+function findProjectRoot(): string | null {
+  let dir = process.cwd();
+  while (true) {
+    if (existsSync(join(dir, ".pi"))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+function readSubagentOverrides(filePath: string): Record<string, AgentOverride> {
+  if (!existsSync(filePath)) return {};
+  let raw: string;
+  try {
+    raw = readFileSync(filePath, "utf8");
+  } catch {
+    return {};
+  }
+  let settings: unknown;
+  try {
+    settings = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) return {};
+  const s = settings as Record<string, unknown>;
+  const subagents = s.subagents;
+  if (!subagents || typeof subagents !== "object" || Array.isArray(subagents)) return {};
+  const sa = subagents as Record<string, unknown>;
+  const rawOverrides = sa.agentOverrides;
+  if (!rawOverrides || typeof rawOverrides !== "object" || Array.isArray(rawOverrides)) return {};
+  const overrides: Record<string, AgentOverride> = {};
+  for (const [name, value] of Object.entries(rawOverrides as Record<string, unknown>)) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const v = value as Record<string, unknown>;
+    const entry: AgentOverride = {};
+    if ("model" in v && typeof v.model === "string") entry.model = v.model;
+    if ("thinking" in v && typeof v.thinking === "string") entry.thinking = v.thinking;
+    if (entry.model !== undefined || entry.thinking !== undefined) {
+      overrides[name] = entry;
+    }
+  }
+  return overrides;
+}
+
+function getAgentOverride(agentName: string): AgentOverride | undefined {
+  const userSettingsPath = join(homedir(), ".pi", "agent", "settings.json");
+  const projectRoot = findProjectRoot();
+  const projectSettingsPath = projectRoot ? join(projectRoot, ".pi", "settings.json") : null;
+
+  // Project takes precedence
+  if (projectSettingsPath) {
+    const projectOverrides = readSubagentOverrides(projectSettingsPath);
+    if (projectOverrides[agentName]) return projectOverrides[agentName];
+  }
+
+  const userOverrides = readSubagentOverrides(userSettingsPath);
+  return userOverrides[agentName];
+}
+
 interface AgentDefaults {
   model?: string;
   tools?: string;
@@ -370,7 +436,12 @@ function loadAgentDefaults(agentName: string): AgentDefaults | null {
   for (const p of paths) {
     if (!existsSync(p)) continue;
     const parsed = parseAgentDefinition(readFileSync(p, "utf8"), agentName);
-    if (parsed) return parsed;
+    if (parsed) {
+      const override = getAgentOverride(agentName);
+      if (override?.model !== undefined) parsed.model = override.model;
+      if (override?.thinking !== undefined) parsed.thinking = override.thinking;
+      return parsed;
+    }
   }
 
   return null;
