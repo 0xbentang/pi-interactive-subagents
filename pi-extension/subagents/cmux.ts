@@ -72,8 +72,8 @@ function isWezTermLikeBackend(backend: MuxBackend): backend is "wezterm" | "kaku
   return backend === "wezterm" || backend === "kaku";
 }
 
-function getWezTermLikeBinary(backend: MuxBackend): string {
-  return backend === "kaku" ? "kaku" : "wezterm";
+function getWezTermLikeBinary(): string {
+  return process.env.KAKU_UNIX_SOCKET ? "kaku" : "wezterm";
 }
 
 export function isCmuxAvailable(): boolean {
@@ -869,7 +869,7 @@ export function createSurfaceSplit(
   }
 
   if (isWezTermLikeBackend(backend)) {
-    const binary = getWezTermLikeBinary(backend);
+    const binary = getWezTermLikeBinary();
     const args = ["cli", "split-pane"];
     if (direction === "left") args.push("--left");
     else if (direction === "right") args.push("--right");
@@ -960,7 +960,7 @@ export function renameCurrentTab(title: string): void {
     const args = ["cli", "set-tab-title"];
     if (paneId) args.push("--pane-id", paneId);
     args.push(title);
-    execFileSync(getWezTermLikeBinary(backend), args, { encoding: "utf8" });
+    execFileSync(getWezTermLikeBinary(), args, { encoding: "utf8" });
     return;
   }
 
@@ -1012,7 +1012,7 @@ export function renameWorkspace(title: string): void {
     if (paneId) args.push("--pane-id", paneId);
     args.push(title);
     try {
-      execFileSync(getWezTermLikeBinary(backend), args, { encoding: "utf8" });
+      execFileSync(getWezTermLikeBinary(), args, { encoding: "utf8" });
     } catch {
       // Optional — window title is cosmetic.
     }
@@ -1049,7 +1049,7 @@ export function sendCommand(surface: string, command: string): void {
 
   if (isWezTermLikeBackend(backend)) {
     execFileSync(
-      getWezTermLikeBinary(backend),
+      getWezTermLikeBinary(),
       ["cli", "send-text", "--pane-id", surface, "--no-paste", command + "\n"],
       { encoding: "utf8" },
     );
@@ -1077,7 +1077,7 @@ export function sendEscape(surface: string): void {
   }
 
   if (isWezTermLikeBackend(backend)) {
-    execFileSync(getWezTermLikeBinary(backend), ["cli", "send-text", "--pane-id", surface, "--no-paste", "\u001b"], {
+    execFileSync(getWezTermLikeBinary(), ["cli", "send-text", "--pane-id", surface, "--no-paste", "\u001b"], {
       encoding: "utf8",
     });
     return;
@@ -1148,7 +1148,7 @@ export function readScreen(surface: string, lines = 50): string {
 
   if (isWezTermLikeBackend(backend)) {
     const raw = execFileSync(
-      getWezTermLikeBinary(backend),
+      getWezTermLikeBinary(),
       ["cli", "get-text", "--pane-id", surface],
       { encoding: "utf8" },
     );
@@ -1193,7 +1193,7 @@ export async function readScreenAsync(surface: string, lines = 50): Promise<stri
 
   if (isWezTermLikeBackend(backend)) {
     const { stdout } = await execFileAsync(
-      getWezTermLikeBinary(backend),
+      getWezTermLikeBinary(),
       ["cli", "get-text", "--pane-id", surface],
       { encoding: "utf8" },
     );
@@ -1229,7 +1229,7 @@ export function closeSurface(surface: string): void {
   }
 
   if (isWezTermLikeBackend(backend)) {
-    execFileSync(getWezTermLikeBinary(backend), ["cli", "kill-pane", "--pane-id", surface], {
+    execFileSync(getWezTermLikeBinary(), ["cli", "kill-pane", "--pane-id", surface], {
       encoding: "utf8",
     });
     return;
