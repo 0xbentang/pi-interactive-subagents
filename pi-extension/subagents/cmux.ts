@@ -6,7 +6,7 @@ import { basename, dirname, join } from "node:path";
 
 const execFileAsync = promisify(execFile);
 
-export type MuxBackend = "cmux" | "tmux" | "zellij" | "wezterm";
+export type MuxBackend = "cmux" | "tmux" | "zellij" | "wezterm" | "kaku";
 
 const commandAvailability = new Map<string, boolean>();
 
@@ -43,7 +43,7 @@ function hasCommand(command: string): boolean {
 
 function muxPreference(): MuxBackend | null {
   const pref = (process.env.PI_SUBAGENT_MUX ?? "").trim().toLowerCase();
-  if (pref === "cmux" || pref === "tmux" || pref === "zellij" || pref === "wezterm") return pref;
+  if (pref === "cmux" || pref === "tmux" || pref === "zellij" || pref === "wezterm" || pref === "kaku") return pref;
   return null;
 }
 
@@ -63,6 +63,10 @@ function isWezTermRuntimeAvailable(): boolean {
   return !!process.env.WEZTERM_UNIX_SOCKET && hasCommand("wezterm");
 }
 
+function isKakuRuntimeAvailable(): boolean {
+  return !!process.env.KAKU_UNIX_SOCKET && hasCommand("kaku");
+}
+
 export function isCmuxAvailable(): boolean {
   return isCmuxRuntimeAvailable();
 }
@@ -79,16 +83,22 @@ export function isWezTermAvailable(): boolean {
   return isWezTermRuntimeAvailable();
 }
 
+export function isKakuAvailable(): boolean {
+  return isKakuRuntimeAvailable();
+}
+
 export function getMuxBackend(): MuxBackend | null {
   const pref = muxPreference();
   if (pref === "cmux") return isCmuxRuntimeAvailable() ? "cmux" : null;
   if (pref === "tmux") return isTmuxRuntimeAvailable() ? "tmux" : null;
   if (pref === "zellij") return isZellijRuntimeAvailable() ? "zellij" : null;
   if (pref === "wezterm") return isWezTermRuntimeAvailable() ? "wezterm" : null;
+  if (pref === "kaku") return isKakuRuntimeAvailable() ? "kaku" : null;
 
   if (isCmuxRuntimeAvailable()) return "cmux";
   if (isTmuxRuntimeAvailable()) return "tmux";
   if (isZellijRuntimeAvailable()) return "zellij";
+  if (isKakuRuntimeAvailable()) return "kaku";
   if (isWezTermRuntimeAvailable()) return "wezterm";
   return null;
 }
@@ -111,7 +121,10 @@ export function muxSetupHint(): string {
   if (pref === "wezterm") {
     return "Start pi inside WezTerm.";
   }
-  return "Start pi inside cmux (`cmux pi`), tmux (`tmux new -A -s pi 'pi'`), zellij (`zellij --session pi`, then run `pi`), or WezTerm.";
+  if (pref === "kaku") {
+    return "Start pi inside Kaku.";
+  }
+  return "Start pi inside cmux (`cmux pi`), tmux (`tmux new -A -s pi 'pi'`), zellij (`zellij --session pi`, then run `pi`), Kaku, or WezTerm.";
 }
 
 function requireMuxBackend(): MuxBackend {
@@ -870,6 +883,30 @@ export function createSurfaceSplit(
     return paneId;
   }
 
+  if (backend === "kaku") {
+    const args = ["cli", "split-pane"];
+    if (direction === "left") args.push("--left");
+    else if (direction === "right") args.push("--right");
+    else if (direction === "up") args.push("--top");
+    else args.push("--bottom");
+    args.push("--cwd", process.cwd());
+    if (fromSurface) {
+      args.push("--pane-id", fromSurface);
+    }
+    const paneId = execFileSync("kaku", args, { encoding: "utf8" }).trim();
+    if (!paneId || !/^\d+$/.test(paneId)) {
+      throw new Error(`Unexpected kaku split-pane output: ${paneId || "(empty)"}`);
+    }
+    try {
+      execFileSync("kaku", ["cli", "set-tab-title", "--pane-id", paneId, name], {
+        encoding: "utf8",
+      });
+    } catch {
+      // Optional — tab title is cosmetic.
+    }
+    return paneId;
+  }
+
   // zellij
   const directionArg = direction === "left" || direction === "right" ? "right" : "down";
   const args = ["new-pane", "--direction", directionArg, "--name", name, "--cwd", process.cwd()];
@@ -941,6 +978,15 @@ export function renameCurrentTab(title: string): void {
     return;
   }
 
+  if (backend === "kaku") {
+    const paneId = process.env.WEZTERM_PANE;
+    const args = ["cli", "set-tab-title"];
+    if (paneId) args.push("--pane-id", paneId);
+    args.push(title);
+    execFileSync("kaku", args, { encoding: "utf8" });
+    return;
+  }
+
   // zellij: rename the agent's own pane, not the whole tab. In multi-pane layouts,
   // rename-tab clobbers the user's tab title whenever a subagent starts or /plan runs.
   // Closes #21.
@@ -996,6 +1042,19 @@ export function renameWorkspace(title: string): void {
     return;
   }
 
+  if (backend === "kaku") {
+    const paneId = process.env.WEZTERM_PANE;
+    const args = ["cli", "set-window-title"];
+    if (paneId) args.push("--pane-id", paneId);
+    args.push(title);
+    try {
+      execFileSync("kaku", args, { encoding: "utf8" });
+    } catch {
+      // Optional — window title is cosmetic.
+    }
+    return;
+  }
+
   // Skip session rename for zellij. rename-session renames the socket file
   // but the ZELLIJ_SESSION_NAME env var in the parent process keeps the old
   // name, so all subsequent `zellij action ...` CLI calls fail with
@@ -1033,6 +1092,15 @@ export function sendCommand(surface: string, command: string): void {
     return;
   }
 
+  if (backend === "kaku") {
+    execFileSync(
+      "kaku",
+      ["cli", "send-text", "--pane-id", surface, "--no-paste", command + "\n"],
+      { encoding: "utf8" },
+    );
+    return;
+  }
+
   zellijActionSync(["write-chars", command], surface);
   zellijActionSync(["write", "13"], surface);
 }
@@ -1055,6 +1123,13 @@ export function sendEscape(surface: string): void {
 
   if (backend === "wezterm") {
     execFileSync("wezterm", ["cli", "send-text", "--pane-id", surface, "--no-paste", "\u001b"], {
+      encoding: "utf8",
+    });
+    return;
+  }
+
+  if (backend === "kaku") {
+    execFileSync("kaku", ["cli", "send-text", "--pane-id", surface, "--no-paste", "\u001b"], {
       encoding: "utf8",
     });
     return;
@@ -1132,6 +1207,15 @@ export function readScreen(surface: string, lines = 50): string {
     return tailLines(raw, lines);
   }
 
+  if (backend === "kaku") {
+    const raw = execFileSync(
+      "kaku",
+      ["cli", "get-text", "--pane-id", surface],
+      { encoding: "utf8" },
+    );
+    return tailLines(raw, lines);
+  }
+
   // Zellij 0.44+: use --pane-id flag + stdout instead of env var + temp file.
   // The ZELLIJ_PANE_ID env var doesn't reliably target other panes for dump-screen,
   // and --path may silently fail to create the file. Stdout capture is robust.
@@ -1177,6 +1261,15 @@ export async function readScreenAsync(surface: string, lines = 50): Promise<stri
     return tailLines(stdout, lines);
   }
 
+  if (backend === "kaku") {
+    const { stdout } = await execFileAsync(
+      "kaku",
+      ["cli", "get-text", "--pane-id", surface],
+      { encoding: "utf8" },
+    );
+    return tailLines(stdout, lines);
+  }
+
   // Zellij 0.44+: use --pane-id flag + stdout instead of env var + temp file.
   const paneId = zellijPaneId(surface);
   const { stdout } = await execFileAsync(
@@ -1207,6 +1300,13 @@ export function closeSurface(surface: string): void {
 
   if (backend === "wezterm") {
     execFileSync("wezterm", ["cli", "kill-pane", "--pane-id", surface], {
+      encoding: "utf8",
+    });
+    return;
+  }
+
+  if (backend === "kaku") {
+    execFileSync("kaku", ["cli", "kill-pane", "--pane-id", surface], {
       encoding: "utf8",
     });
     return;
