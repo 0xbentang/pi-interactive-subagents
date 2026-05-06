@@ -186,18 +186,20 @@ function readSubagentOverrides(filePath: string): Record<string, AgentOverride> 
 }
 
 function getAgentOverride(agentName: string): AgentOverride | undefined {
-  const userSettingsPath = join(homedir(), ".pi", "agent", "settings.json");
+  const userOverrides = readSubagentOverrides(join(getAgentConfigDir(), "settings.json"));
   const projectRoot = findProjectRoot();
-  const projectSettingsPath = projectRoot ? join(projectRoot, ".pi", "settings.json") : null;
+  const projectOverrides = projectRoot
+    ? readSubagentOverrides(join(projectRoot, ".pi", "settings.json"))
+    : {};
+  const override = { ...userOverrides[agentName], ...projectOverrides[agentName] };
+  return override.model !== undefined || override.thinking !== undefined ? override : undefined;
+}
 
-  // Project takes precedence
-  if (projectSettingsPath) {
-    const projectOverrides = readSubagentOverrides(projectSettingsPath);
-    if (projectOverrides[agentName]) return projectOverrides[agentName];
-  }
-
-  const userOverrides = readSubagentOverrides(userSettingsPath);
-  return userOverrides[agentName];
+function applyAgentOverride<T extends AgentOverride>(agentName: string, agent: T): T {
+  const override = getAgentOverride(agentName);
+  if (override?.model !== undefined) agent.model = override.model;
+  if (override?.thinking !== undefined) agent.thinking = override.thinking;
+  return agent;
 }
 
 interface AgentDefaults {
@@ -339,6 +341,7 @@ function discoverAgentDefinitions(): ListedAgentDefinition[] {
         file.replace(/\.md$/, ""),
       );
       if (!parsed) continue;
+      if (source === "package") applyAgentOverride(parsed.name, parsed);
       agents.set(parsed.name, { ...parsed, source });
     }
   }
@@ -428,19 +431,16 @@ function resolveEffectiveInteractive(
 function loadAgentDefaults(agentName: string): AgentDefaults | null {
   const configDir = getAgentConfigDir();
   const paths = [
-    join(process.cwd(), ".pi", "agents", `${agentName}.md`),
-    join(configDir, "agents", `${agentName}.md`),
-    join(getBundledAgentsDir(), `${agentName}.md`),
+    { path: join(process.cwd(), ".pi", "agents", `${agentName}.md`), bundled: false },
+    { path: join(configDir, "agents", `${agentName}.md`), bundled: false },
+    { path: join(getBundledAgentsDir(), `${agentName}.md`), bundled: true },
   ];
 
-  for (const p of paths) {
+  for (const { path: p, bundled } of paths) {
     if (!existsSync(p)) continue;
     const parsed = parseAgentDefinition(readFileSync(p, "utf8"), agentName);
     if (parsed) {
-      const override = getAgentOverride(agentName);
-      if (override?.model !== undefined) parsed.model = override.model;
-      if (override?.thinking !== undefined) parsed.thinking = override.thinking;
-      return parsed;
+      return bundled ? applyAgentOverride(agentName, parsed) : parsed;
     }
   }
 
