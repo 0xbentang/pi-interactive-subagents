@@ -67,6 +67,15 @@ function isKakuRuntimeAvailable(): boolean {
   return !!process.env.KAKU_UNIX_SOCKET && hasCommand("kaku");
 }
 
+/** True for backends that share WezTerm's CLI interface (wezterm, kaku). */
+function isWezTermLikeBackend(backend: MuxBackend): backend is "wezterm" | "kaku" {
+  return backend === "wezterm" || backend === "kaku";
+}
+
+function getWezTermLikeBinary(backend: MuxBackend): string {
+  return backend === "kaku" ? "kaku" : "wezterm";
+}
+
 export function isCmuxAvailable(): boolean {
   return isCmuxRuntimeAvailable();
 }
@@ -859,7 +868,8 @@ export function createSurfaceSplit(
     return pane;
   }
 
-  if (backend === "wezterm") {
+  if (isWezTermLikeBackend(backend)) {
+    const binary = getWezTermLikeBinary(backend);
     const args = ["cli", "split-pane"];
     if (direction === "left") args.push("--left");
     else if (direction === "right") args.push("--right");
@@ -869,36 +879,12 @@ export function createSurfaceSplit(
     if (fromSurface) {
       args.push("--pane-id", fromSurface);
     }
-    const paneId = execFileSync("wezterm", args, { encoding: "utf8" }).trim();
+    const paneId = execFileSync(binary, args, { encoding: "utf8" }).trim();
     if (!paneId || !/^\d+$/.test(paneId)) {
-      throw new Error(`Unexpected wezterm split-pane output: ${paneId || "(empty)"}`);
+      throw new Error(`Unexpected ${binary} split-pane output: ${paneId || "(empty)"}`);
     }
     try {
-      execFileSync("wezterm", ["cli", "set-tab-title", "--pane-id", paneId, name], {
-        encoding: "utf8",
-      });
-    } catch {
-      // Optional — tab title is cosmetic.
-    }
-    return paneId;
-  }
-
-  if (backend === "kaku") {
-    const args = ["cli", "split-pane"];
-    if (direction === "left") args.push("--left");
-    else if (direction === "right") args.push("--right");
-    else if (direction === "up") args.push("--top");
-    else args.push("--bottom");
-    args.push("--cwd", process.cwd());
-    if (fromSurface) {
-      args.push("--pane-id", fromSurface);
-    }
-    const paneId = execFileSync("kaku", args, { encoding: "utf8" }).trim();
-    if (!paneId || !/^\d+$/.test(paneId)) {
-      throw new Error(`Unexpected kaku split-pane output: ${paneId || "(empty)"}`);
-    }
-    try {
-      execFileSync("kaku", ["cli", "set-tab-title", "--pane-id", paneId, name], {
+      execFileSync(binary, ["cli", "set-tab-title", "--pane-id", paneId, name], {
         encoding: "utf8",
       });
     } catch {
@@ -969,21 +955,12 @@ export function renameCurrentTab(title: string): void {
     return;
   }
 
-  if (backend === "wezterm") {
+  if (isWezTermLikeBackend(backend)) {
     const paneId = process.env.WEZTERM_PANE;
     const args = ["cli", "set-tab-title"];
     if (paneId) args.push("--pane-id", paneId);
     args.push(title);
-    execFileSync("wezterm", args, { encoding: "utf8" });
-    return;
-  }
-
-  if (backend === "kaku") {
-    const paneId = process.env.WEZTERM_PANE;
-    const args = ["cli", "set-tab-title"];
-    if (paneId) args.push("--pane-id", paneId);
-    args.push(title);
-    execFileSync("kaku", args, { encoding: "utf8" });
+    execFileSync(getWezTermLikeBinary(backend), args, { encoding: "utf8" });
     return;
   }
 
@@ -1029,26 +1006,13 @@ export function renameWorkspace(title: string): void {
     return;
   }
 
-  if (backend === "wezterm") {
+  if (isWezTermLikeBackend(backend)) {
     const paneId = process.env.WEZTERM_PANE;
     const args = ["cli", "set-window-title"];
     if (paneId) args.push("--pane-id", paneId);
     args.push(title);
     try {
-      execFileSync("wezterm", args, { encoding: "utf8" });
-    } catch {
-      // Optional — window title is cosmetic.
-    }
-    return;
-  }
-
-  if (backend === "kaku") {
-    const paneId = process.env.WEZTERM_PANE;
-    const args = ["cli", "set-window-title"];
-    if (paneId) args.push("--pane-id", paneId);
-    args.push(title);
-    try {
-      execFileSync("kaku", args, { encoding: "utf8" });
+      execFileSync(getWezTermLikeBinary(backend), args, { encoding: "utf8" });
     } catch {
       // Optional — window title is cosmetic.
     }
@@ -1083,18 +1047,9 @@ export function sendCommand(surface: string, command: string): void {
     return;
   }
 
-  if (backend === "wezterm") {
+  if (isWezTermLikeBackend(backend)) {
     execFileSync(
-      "wezterm",
-      ["cli", "send-text", "--pane-id", surface, "--no-paste", command + "\n"],
-      { encoding: "utf8" },
-    );
-    return;
-  }
-
-  if (backend === "kaku") {
-    execFileSync(
-      "kaku",
+      getWezTermLikeBinary(backend),
       ["cli", "send-text", "--pane-id", surface, "--no-paste", command + "\n"],
       { encoding: "utf8" },
     );
@@ -1121,15 +1076,8 @@ export function sendEscape(surface: string): void {
     return;
   }
 
-  if (backend === "wezterm") {
-    execFileSync("wezterm", ["cli", "send-text", "--pane-id", surface, "--no-paste", "\u001b"], {
-      encoding: "utf8",
-    });
-    return;
-  }
-
-  if (backend === "kaku") {
-    execFileSync("kaku", ["cli", "send-text", "--pane-id", surface, "--no-paste", "\u001b"], {
+  if (isWezTermLikeBackend(backend)) {
+    execFileSync(getWezTermLikeBinary(backend), ["cli", "send-text", "--pane-id", surface, "--no-paste", "\u001b"], {
       encoding: "utf8",
     });
     return;
@@ -1198,18 +1146,9 @@ export function readScreen(surface: string, lines = 50): string {
     );
   }
 
-  if (backend === "wezterm") {
+  if (isWezTermLikeBackend(backend)) {
     const raw = execFileSync(
-      "wezterm",
-      ["cli", "get-text", "--pane-id", surface],
-      { encoding: "utf8" },
-    );
-    return tailLines(raw, lines);
-  }
-
-  if (backend === "kaku") {
-    const raw = execFileSync(
-      "kaku",
+      getWezTermLikeBinary(backend),
       ["cli", "get-text", "--pane-id", surface],
       { encoding: "utf8" },
     );
@@ -1252,18 +1191,9 @@ export async function readScreenAsync(surface: string, lines = 50): Promise<stri
     return stdout;
   }
 
-  if (backend === "wezterm") {
+  if (isWezTermLikeBackend(backend)) {
     const { stdout } = await execFileAsync(
-      "wezterm",
-      ["cli", "get-text", "--pane-id", surface],
-      { encoding: "utf8" },
-    );
-    return tailLines(stdout, lines);
-  }
-
-  if (backend === "kaku") {
-    const { stdout } = await execFileAsync(
-      "kaku",
+      getWezTermLikeBinary(backend),
       ["cli", "get-text", "--pane-id", surface],
       { encoding: "utf8" },
     );
@@ -1298,15 +1228,8 @@ export function closeSurface(surface: string): void {
     return;
   }
 
-  if (backend === "wezterm") {
-    execFileSync("wezterm", ["cli", "kill-pane", "--pane-id", surface], {
-      encoding: "utf8",
-    });
-    return;
-  }
-
-  if (backend === "kaku") {
-    execFileSync("kaku", ["cli", "kill-pane", "--pane-id", surface], {
+  if (isWezTermLikeBackend(backend)) {
+    execFileSync(getWezTermLikeBinary(backend), ["cli", "kill-pane", "--pane-id", surface], {
       encoding: "utf8",
     });
     return;
