@@ -1034,6 +1034,44 @@ describe("subagent discovery", () => {
     });
   });
 
+  it("applies settings.json tools override to bundled agents", async () => {
+    await withIsolatedAgentEnv(async ({ globalDir }) => {
+      writeFileSync(
+        join(globalDir, "settings.json"),
+        JSON.stringify({
+          subagents: {
+            agentOverrides: {
+              scout: { tools: "read, bash, grep, find, ls" },
+            },
+          },
+        }),
+      );
+
+      const defs = testApi.loadAgentDefaults("scout");
+      assert.ok(defs, "expected bundled scout to be discoverable");
+      assert.equal(defs.tools, "read, bash, grep, find, ls");
+    });
+  });
+
+  it("supports tools: false to clear bundled agent tools", async () => {
+    await withIsolatedAgentEnv(async ({ globalDir }) => {
+      writeFileSync(
+        join(globalDir, "settings.json"),
+        JSON.stringify({
+          subagents: {
+            agentOverrides: {
+              worker: { tools: false },
+            },
+          },
+        }),
+      );
+
+      const defs = testApi.loadAgentDefaults("worker");
+      assert.ok(defs, "expected bundled worker to be discoverable");
+      assert.equal(defs.tools, undefined);
+    });
+  });
+
   it("ignores invalid session-mode values", async () => {
     await withIsolatedAgentEnv(async ({ projectAgentsDir }) => {
       writeAgentFile(

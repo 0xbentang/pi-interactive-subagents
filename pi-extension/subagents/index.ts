@@ -134,10 +134,11 @@ const SubagentParams = Type.Object({
 
 type SubagentSessionMode = "standalone" | "lineage-only" | "fork";
 
-/** Overrides for model/thinking of built-in subagents from settings.json. */
+/** Overrides for built-in subagents from settings.json. */
 interface AgentOverride {
   model?: string;
   thinking?: string;
+  tools?: string | false;
 }
 
 function findProjectRoot(): string | null {
@@ -178,7 +179,8 @@ function readSubagentOverrides(filePath: string): Record<string, AgentOverride> 
     const entry: AgentOverride = {};
     if ("model" in v && typeof v.model === "string") entry.model = v.model;
     if ("thinking" in v && typeof v.thinking === "string") entry.thinking = v.thinking;
-    if (entry.model !== undefined || entry.thinking !== undefined) {
+    if ("tools" in v && (typeof v.tools === "string" || v.tools === false)) entry.tools = v.tools;
+    if (entry.model !== undefined || entry.thinking !== undefined || entry.tools !== undefined) {
       overrides[name] = entry;
     }
   }
@@ -192,13 +194,14 @@ function getAgentOverride(agentName: string): AgentOverride | undefined {
     ? readSubagentOverrides(join(projectRoot, ".pi", "settings.json"))
     : {};
   const override = { ...userOverrides[agentName], ...projectOverrides[agentName] };
-  return override.model !== undefined || override.thinking !== undefined ? override : undefined;
+  return override.model !== undefined || override.thinking !== undefined || override.tools !== undefined ? override : undefined;
 }
 
 function applyAgentOverride<T extends AgentOverride>(agentName: string, agent: T): T {
   const override = getAgentOverride(agentName);
   if (override?.model !== undefined) agent.model = override.model;
   if (override?.thinking !== undefined) agent.thinking = override.thinking;
+  if (override?.tools !== undefined) agent.tools = override.tools === false ? undefined : override.tools;
   return agent;
 }
 
