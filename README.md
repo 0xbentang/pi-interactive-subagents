@@ -389,60 +389,57 @@ subagent({ name: "Scout", agent: "scout", interactive: true, task: "..." });
 
 Agents with `cli: claude` launch Claude Code instead of Pi. This is useful when you want a subagent to use a local Claude Code installation while still being spawned and monitored by this extension.
 
-If a Claude Code agent does not set `permission-mode`, the launcher preserves the bundled `claude-code` behavior and starts Claude Code with `--dangerously-skip-permissions`. To make a safer custom agent, define a separate agent file in `.pi/agents/` or `~/.pi/agent/agents/` and set Claude Code's permission and tool flags there.
+If a Claude Code agent does not set `permission-mode`, the launcher preserves the bundled `claude-code` behavior and starts Claude Code with `--dangerously-skip-permissions`. To make the default `claude-code` agent safer, override that bundled agent by creating a same-name file in `.pi/agents/claude-code.md` or `~/.pi/agent/agents/claude-code.md` and set Claude Code's permission and tool flags there.
 
 Recommended guidelines:
 
-- Do not edit the bundled `agents/claude-code.md` just to change permissions. Create a separate project-local or global agent instead.
+- Do not edit the bundled `agents/claude-code.md` just to change permissions. Override it with a same-name project-local or global agent file.
 - Use Claude Code tool names, not Pi tool names, for Claude Code agents. Examples: `Read`, `Grep`, `Glob`, `Bash`, `Edit`, `Write`.
 - For read-only investigation, allow only read-oriented Claude Code tools and deny mutation or shell tools.
 - Use `spawning: false` and `deny-tools: claude` when the child should not delegate or call back into Claude Code from Pi tools.
 - Keep `auto-exit: true` for autonomous read-only investigations so the pane closes and reports back when done.
 
-Project-local read-only example (`.pi/agents/claude-code-readonly.md`):
+Global override example (`~/.pi/agent/agents/claude-code.md`):
 
 ```markdown
 ---
-name: claude-code-readonly
-description: Read-only Claude Code investigation session
+name: claude-code
+description: Read-only Claude Code session for investigation and code exploration
 cli: claude
 model: sonnet
 auto-exit: true
 spawning: false
 deny-tools: claude
-permission-mode: default
-tools: Read,Grep,Glob
-disallowed-tools: Bash,Edit,Write
----
-
-# Claude Code Read-only
-
-You are a read-only Claude Code investigator. Inspect files and report findings with evidence. Do not edit files, run shell commands, or make changes.
-```
-
-Then spawn it like any other named agent:
-
-```typescript
-subagent({
-  name: "Read-only investigation",
-  agent: "claude-code-readonly",
-  task: "Inspect the auth flow and report where session cookies are created.",
-});
-```
-
-You can also use explicit Claude-prefixed field names if you want the frontmatter to make the backend distinction obvious:
-
-```yaml
----
-name: claude-code-readonly
-cli: claude
 claude-permission-mode: default
 claude-tools: Read,Grep,Glob
 claude-disallowed-tools: Bash,Edit,Write
 ---
+
+# Claude Code Read-only
+
+You are a read-only Claude Code session spawned by pi for investigation and code exploration.
+
+You may inspect files with Read, Grep, and Glob. Do not edit files, run shell commands, change repository state, install packages, run tests, or make network calls.
+
+## Guidelines
+
+- Focus on the task given to you.
+- Report concrete findings with evidence, including file paths and relevant excerpts.
+- If you need information that requires shell commands, edits, builds, tests, or network access, explain what is needed instead of attempting it.
+- Your final message should summarize what you found and what you could not verify under read-only constraints.
 ```
 
-The extension passes these through to Claude Code as:
+Then keep using the normal bundled agent name. Agent discovery gives your global or project-local file precedence over the package-bundled definition:
+
+```typescript
+subagent({
+  name: "Read-only investigation",
+  agent: "claude-code",
+  task: "Inspect the auth flow and report where session cookies are created.",
+});
+```
+
+The extension passes the Claude-prefixed fields through to Claude Code as:
 
 ```bash
 claude --permission-mode default --tools Read,Grep,Glob --disallowed-tools Bash,Edit,Write
