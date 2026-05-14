@@ -10,16 +10,16 @@ Call `subagent()` and it **returns immediately**. The sub-agent runs in its own 
 
 ```
 ╭─ Subagents ──────────────────────────── 2 running ─╮
-│ 00:23  Scout: Auth (scout)        active · bash 7m │
-│ 00:45  Scout: DB (scout)                waiting 2m │
+│ 00:23  Reviewer (reviewer)        active · bash 7m │
+│ 00:45  Reviewer (reviewer)                waiting 2m │
 ╰────────────────────────────────────────────────────╯
 ```
 
 For parallel execution, just call `subagent` multiple times — they all run concurrently:
 
 ```typescript
-subagent({ name: "Scout: Auth", agent: "scout", task: "Analyze auth module" });
-subagent({ name: "Scout: DB", agent: "scout", task: "Map database schema" });
+subagent({ name: "Reviewer", agent: "reviewer", task: "Review auth module" });
+subagent({ name: "Reviewer", agent: "reviewer", task: "Review database schema" });
 // Both return immediately, results steer back independently
 ```
 
@@ -80,7 +80,6 @@ Subagent panes are created without stealing keyboard focus (cmux, tmux). Launch 
 
 | Agent        | Model                  | Role                                                           |
 | ------------ | ---------------------- | -------------------------------------------------------------- |
-| **scout**    | Haiku                  | Fast codebase reconnaissance — maps files, patterns, conventions |
 | **reviewer** | Opus (medium thinking) | Reviews code for bugs, security issues, correctness            |
 
 Agent discovery follows priority: **project-local** (`.pi/agents/`) > **global** (`~/.pi/agent/agents/`) > **package-bundled**. Override any bundled agent by placing your own version in the higher-priority location.
@@ -101,9 +100,9 @@ Multiple subagents run concurrently — each steers its result back independentl
 
 ```
 ╭─ Subagents ───────────────────────────────── 3 running ─╮
-│ 01:23  Scout: Auth (scout)            active · write 7m │
+│ 01:23  Reviewer (reviewer)          active · write 7m │
 │ 00:45  Researcher (researcher)               stalled 4m │
-│ 00:12  Scout: DB (scout)                      starting… │
+│ 00:12  Reviewer (reviewer)                    starting… │
 ╰─────────────────────────────────────────────────────────╯
 ```
 
@@ -147,7 +146,7 @@ cp config.json.example config.json
 
 ```typescript
 // Named agent with defaults from agent definition
-subagent({ name: "Scout", agent: "scout", task: "Analyze the codebase..." });
+subagent({ name: "Reviewer", agent: "reviewer", task: "Review the codebase..." });
 
 // Force a full-context fork for this spawn
 subagent({ name: "Iterate", fork: true, task: "Fix the bug where..." });
@@ -270,7 +269,7 @@ You are a specialized agent that does X...
 | `session-mode` | string | Default child-session mode: `standalone`, `lineage-only`, or `fork` |
 | `spawning`    | boolean | Set `false` to deny all subagent-spawning tools                                                                                                                                                                                                                             |
 | `deny-tools`  | string  | Comma-separated extension tool names to deny                                                                                                                                                                                                                                |
-| `auto-exit`   | boolean | Auto-shutdown when the agent finishes its turn — no `subagent_done` call needed. If the user sends any input, auto-exit is permanently disabled and the user takes over the session. Recommended for autonomous agents (scout, reviewer); not for interactive ones. Also determines the default value of `interactive` (see below). |
+| `auto-exit`   | boolean | Auto-shutdown when the agent finishes its turn — no `subagent_done` call needed. If the user sends any input, auto-exit is permanently disabled and the user takes over the session. Recommended for autonomous agents (reviewer); not for interactive ones. Also determines the default value of `interactive` (see below). |
 | `interactive` | boolean | derived        | Override whether stall/recovery transitions wake the parent session. Defaults to the inverse of `auto-exit`: autonomous agents (`auto-exit: true`) are non-interactive and get stall pings; agents without `auto-exit` are interactive and stay quiet. Explicit values take precedence. |
 | `cwd`         | string  | Default working directory (absolute or relative to project root)                                                                                                                                                                                                            |
 | `cli`         | string  | Optional backend CLI. Set `claude` to launch Claude Code instead of Pi for this agent.                                                                                                                                                                                      |
@@ -310,12 +309,12 @@ When set to `true`, the agent session shuts down automatically as soon as the ag
 
 **When to use:**
 
-- ✅ Autonomous agents (scout, reviewer) that run to completion
+- ✅ Autonomous agents (reviewer) that run to completion
 - ❌ Interactive agents (e.g. iterate forks) where the user drives the session
 
 ```yaml
 ---
-name: scout
+name: reviewer
 auto-exit: true
 ---
 ```
@@ -324,17 +323,16 @@ auto-exit: true
 
 Agents with `cli: claude` launch Claude Code instead of Pi. This is useful when you want a subagent to use a local Claude Code installation while still being spawned and monitored by this extension.
 
-If a Claude Code agent does not set `permission-mode`, the launcher preserves the bundled `claude-code` behavior and starts Claude Code with `--dangerously-skip-permissions`. To make the default `claude-code` agent safer, override that bundled agent by creating a same-name file in `.pi/agents/claude-code.md` or `~/.pi/agent/agents/claude-code.md` and set Claude Code's permission and tool flags there.
+If a Claude Code agent does not set `permission-mode`, the launcher starts Claude Code with `--dangerously-skip-permissions`. For read-only investigation, define a project-local or global Claude Code agent in `.pi/agents/` or `~/.pi/agent/agents/` and set Claude Code's permission and tool flags there.
 
 Recommended guidelines:
 
-- Do not edit the bundled `agents/claude-code.md` just to change permissions. Override it with a same-name project-local or global agent file.
 - Use Claude Code tool names, not Pi tool names, for Claude Code agents. Examples: `Read`, `Grep`, `Glob`, `Bash`, `Edit`, `Write`.
 - For read-only investigation, allow only read-oriented Claude Code tools and deny mutation or shell tools.
 - Use `spawning: false` and `deny-tools: claude` when the child should not delegate or call back into Claude Code from Pi tools.
 - Keep `auto-exit: true` for autonomous read-only investigations so the pane closes and reports back when done.
 
-Global override example (`~/.pi/agent/agents/claude-code.md`):
+Global agent example (`~/.pi/agent/agents/claude-code.md`):
 
 ```markdown
 ---
@@ -364,7 +362,7 @@ You may inspect files with Read, Grep, and Glob. Do not edit files, run shell co
 - Your final message should summarize what you found and what you could not verify under read-only constraints.
 ```
 
-Then keep using the normal bundled agent name. Agent discovery gives your global or project-local file precedence over the package-bundled definition:
+Then invoke the user-defined agent name:
 
 ```typescript
 subagent({
@@ -384,17 +382,16 @@ claude --permission-mode default --tools Read,Grep,Glob --disallowed-tools Bash,
 
 Agents with `cli: cursor` launch Cursor Agent instead of Pi. This is useful when you want a subagent to use a local Cursor Agent installation while still being spawned and monitored by this extension.
 
-The bundled `cursor-agent` agent is intentionally autonomous and starts Cursor Agent with `--yolo` via `cursor-yolo: true`. Its bundled model is `composer-2`. To make the default `cursor-agent` safer, override that bundled agent by creating a same-name file in `.pi/agents/cursor-agent.md` or `~/.pi/agent/agents/cursor-agent.md` and set Cursor Agent's mode and permission flags there.
+Define project-local or global Cursor Agent agents in `.pi/agents/` or `~/.pi/agent/agents/` and set Cursor Agent's mode and permission flags there.
 
 Recommended guidelines:
 
-- Do not edit the bundled `agents/cursor-agent.md` just to change permissions. Override it with a same-name project-local or global agent file.
 - Use Cursor Agent CLI flags through Cursor-prefixed frontmatter. Examples: `cursor-mode: plan`, `cursor-force: false`, `cursor-yolo: true`, `cursor-sandbox: enabled`.
 - For read-only investigation, use `cursor-mode: plan` and `cursor-force: false`.
 - Use `spawning: false` and `deny-tools: cursor` when the child should not delegate or call back into Cursor Agent from Pi tools.
 - Keep `auto-exit: true` for autonomous read-only investigations so the pane closes and reports back when done.
 
-Global override example (`~/.pi/agent/agents/cursor-agent.md`):
+Global agent example (`~/.pi/agent/agents/cursor-agent.md`):
 
 ```markdown
 ---
@@ -423,7 +420,7 @@ Do not edit files. Do not run commands that modify files, state, dependencies, g
 - Your final message should summarize what you found and what you could not verify under read-only constraints.
 ```
 
-Then keep using the normal bundled agent name. Agent discovery gives your global or project-local file precedence over the package-bundled definition:
+Then invoke the user-defined agent name:
 
 ```typescript
 subagent({
@@ -475,7 +472,6 @@ deny-tools: subagent
 | ---------- | ----------- | -------------------------------------------- |
 | researcher | `false`     | Should research, not spawn                   |
 | reviewer   | `false`     | Should review, not spawn                     |
-| scout      | `false`     | Should gather context, not spawn             |
 
 ---
 
@@ -517,8 +513,8 @@ spawning: false
 Every sub-agent session displays a compact tools widget showing available and denied tools. Toggle with `Ctrl+J`:
 
 ```
-[scout] — 12 tools · 4 denied  (Ctrl+J)              ← collapsed
-[scout] — 12 available  (Ctrl+J to collapse)          ← expanded
+[reviewer] — 12 tools · 4 denied  (Ctrl+J)              ← collapsed
+[reviewer] — 12 available  (Ctrl+J to collapse)          ← expanded
   read, bash, edit, write, todo, ...
   denied: subagent, subagents_list, ...
 ```

@@ -91,7 +91,7 @@ const SubagentParams = Type.Object({
   agent: Type.Optional(
     Type.String({
       description:
-        "Agent name to load defaults from (e.g. 'worker', 'scout', 'reviewer'). Reads ~/.pi/agent/agents/<name>.md for model, tools, skills.",
+        "Agent name to load defaults from (e.g. 'reviewer'). Reads ~/.pi/agent/agents/<name>.md for model, tools, skills.",
     }),
   ),
   systemPrompt: Type.Optional(
@@ -360,7 +360,7 @@ function resolveLaunchBehavior(
  *   1. Explicit `interactive` tool parameter wins.
  *   2. Explicit `interactive` frontmatter field on the agent.
  *   3. Default: the inverse of `auto-exit`. Agents that auto-exit are
- *      autonomous (scout, reviewer) and the parent session should be
+ *      autonomous (reviewer) and the parent session should be
  *      woken on stall/recovery transitions. Agents that don't auto-exit are
  *      driven by the user in their own pane (iterate/fork) and
  *      stall pings are noise.

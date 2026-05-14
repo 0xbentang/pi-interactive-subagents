@@ -1042,16 +1042,14 @@ describe("subagent discovery", () => {
     );
   });
 
-  it("bundled scout/reviewer agents resolve as non-interactive", () => {
-    for (const name of ["scout", "reviewer"]) {
-      const defs = testApi.loadAgentDefaults(name);
-      assert.ok(defs, `expected bundled agent ${name} to be discoverable`);
-      assert.equal(
-        testApi.resolveEffectiveInteractive({ name, task: "" }, defs),
-        false,
-        `${name} should resolve as non-interactive (autonomous)`,
-      );
-    }
+  it("bundled reviewer resolves as non-interactive", () => {
+    const defs = testApi.loadAgentDefaults("reviewer");
+    assert.ok(defs, "expected bundled agent reviewer to be discoverable");
+    assert.equal(
+      testApi.resolveEffectiveInteractive({ name: "reviewer", task: "" }, defs),
+      false,
+      "reviewer should resolve as non-interactive (autonomous)",
+    );
   });
 
   it("ignores invalid session-mode values", async () => {
