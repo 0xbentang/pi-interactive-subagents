@@ -100,6 +100,6 @@ Only include sections that have substance. Skip empty ones.
 ## Constraints
 
 - **Read-only** — Do NOT modify any files
-- **No builds or tests** — Leave that for the worker
-- **No implementation decisions** — Leave that for the planner
+- **No builds or tests** — Leave that for implementers
+- **No implementation decisions** — Report facts, don't design
 - **Stay focused** — Only explore what's relevant to the task at hand
