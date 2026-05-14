@@ -445,6 +445,67 @@ The extension passes the Claude-prefixed fields through to Claude Code as:
 claude --permission-mode default --tools Read,Grep,Glob --disallowed-tools Bash,Edit,Write
 ```
 
+### Cursor Agent agents and read-only mode
+
+Agents with `cli: cursor` launch Cursor Agent instead of Pi. This is useful when you want a subagent to use a local Cursor Agent installation while still being spawned and monitored by this extension.
+
+The bundled `cursor-agent` agent is intentionally autonomous and starts Cursor Agent with `--yolo` via `cursor-yolo: true`. Its bundled model is `composer-2`. To make the default `cursor-agent` safer, override that bundled agent by creating a same-name file in `.pi/agents/cursor-agent.md` or `~/.pi/agent/agents/cursor-agent.md` and set Cursor Agent's mode and permission flags there.
+
+Recommended guidelines:
+
+- Do not edit the bundled `agents/cursor-agent.md` just to change permissions. Override it with a same-name project-local or global agent file.
+- Use Cursor Agent CLI flags through Cursor-prefixed frontmatter. Examples: `cursor-mode: plan`, `cursor-force: false`, `cursor-yolo: true`, `cursor-sandbox: enabled`.
+- For read-only investigation, use `cursor-mode: plan` and `cursor-force: false`.
+- Use `spawning: false` and `deny-tools: cursor` when the child should not delegate or call back into Cursor Agent from Pi tools.
+- Keep `auto-exit: true` for autonomous read-only investigations so the pane closes and reports back when done.
+
+Global override example (`~/.pi/agent/agents/cursor-agent.md`):
+
+```markdown
+---
+name: cursor-agent
+description: Read-only Cursor Agent session for investigation and planning
+cli: cursor
+model: composer-2
+cursor-mode: plan
+cursor-force: false
+auto-exit: true
+spawning: false
+deny-tools: cursor
+---
+
+# Cursor Agent Read-only
+
+You are a read-only Cursor Agent session spawned by pi for investigation and planning.
+
+Do not edit files. Do not run commands that modify files, state, dependencies, git history, services, databases, or external systems.
+
+## Guidelines
+
+- Focus on the task given to you.
+- Inspect the codebase and report concrete findings with evidence, including file paths and relevant excerpts.
+- If you need information that requires edits, builds, tests, shell commands with side effects, or network access, explain what is needed instead of attempting it.
+- Your final message should summarize what you found and what you could not verify under read-only constraints.
+```
+
+Then keep using the normal bundled agent name. Agent discovery gives your global or project-local file precedence over the package-bundled definition:
+
+```typescript
+subagent({
+  name: "Read-only Cursor investigation",
+  agent: "cursor-agent",
+  task: "Inspect the auth flow and report where session cookies are created.",
+});
+```
+
+The extension passes the Cursor-prefixed fields through to Cursor Agent as:
+
+```bash
+agent --mode plan
+```
+
+For Cursor Agent completion detection, the extension temporarily merges a guarded stop hook into `~/.cursor/hooks.json` while a Cursor-backed subagent is running. The hook exits immediately unless `PI_CURSOR_SENTINEL` is set, and the extension removes its hook entry after the last Cursor-backed subagent exits.
+
 ---
 
 ## Tool Access Control
